@@ -4,16 +4,25 @@ from backend.wallet.transaction import Transaction
 class TransactionPool:
     def __init__(self):
         self.transaction_map = {}
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.DEBUG)  # More verbose logging
         self.logger = logging.getLogger(__name__)
 
     def set_transaction(self, transaction):
         try:
+            self.logger.debug(f"Attempting to add transaction {transaction.id} to pool")
             if not isinstance(transaction, Transaction):
                 raise ValueError("Invalid transaction type")
+            
+            Transaction.is_valid(transaction)
+            
+            if transaction.id in self.transaction_map:
+                self.logger.warning(f"Transaction {transaction.id} already in pool")
+                return
+            
             self.transaction_map[transaction.id] = transaction
+            self.logger.info(f"Successfully added transaction {transaction.id} to pool")
         except Exception as e:
-            self.logger.error(f"Error setting transaction: {str(e)}")
+            self.logger.error(f"Failed to add transaction {transaction.id}: {str(e)}")
             raise
 
     def existing_transaction(self, address):

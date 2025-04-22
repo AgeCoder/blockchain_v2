@@ -1,5 +1,6 @@
 import axios from "axios"
 import { toast } from "@/components/ui/use-toast"
+import { decryptprivateKey } from "./utils"
 
 // Base URL for the API - use environment variable in production
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000"
@@ -14,23 +15,25 @@ export const apiClient = axios.create({
   timeout: 10000, // 10 seconds timeout
 })
 
+
+
 // Add request interceptor to inject private key from localStorage
 apiClient.interceptors.request.use(
   (config) => {
-    // Only run on client side
     if (typeof window !== "undefined") {
-      const privateKey = localStorage.getItem("privateKey")
-
-      // If private key exists, add it to the Authorization header
-      // if (privateKey) {
-      //   config.headers.Authorization = `Bearer ${privateKey}`
-      // }
+      const encryptedprivateKey = localStorage.getItem("privateKey")
+      if (encryptedprivateKey && config.url?.includes("/wallet")) {
+        // Decrypt private key for the request
+        decryptprivateKey(encryptedprivateKey, "aligthage.online.v2").then((privateKey) => {
+          config.headers.Authorization = `Bearer ${privateKey}`
+        }).catch((err) => {
+          console.error("Failed to decrypt private key:", err);
+        });
+      }
     }
 
     // Log outgoing requests in development
-    // if (process.env.NODE_ENV === "development") {
-    //   console.log(`🚀 [API] ${config.method?.toUpperCase()} ${config.url}`, config.data || "")
-    // }
+
 
     return config
   },
@@ -44,16 +47,14 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => {
     // Log successful responses in development
-    // if (process.env.NODE_ENV === "development") {
-    //   console.log(`✅ [API] Response:`, response.status, response.data)
-    // }
+    if (process.env.NODE_ENV === "development") {
+      console.log(`✅ [API] Response:`, response.status, response.data)
+    }
     return response
   },
   (error) => {
     // Log error responses in development
-    // if (process.env.NODE_ENV === "development") {
-    //   console.error(`❌ [API] Error:`, error.response?.status, error.response?.data)
-    // }
+
 
     // Handle specific error codes
     if (error.response) {
@@ -61,19 +62,16 @@ apiClient.interceptors.response.use(
 
       // Handle 401 errors (unauthorized)
       if (status === 401) {
-        // Clear private key from localStorage
         if (typeof window !== "undefined") {
           localStorage.removeItem("privateKey")
         }
 
-        // Show toast notification
         toast({
           title: "Authentication Error",
           description: "Your session has expired. Please log in again.",
           variant: "destructive",
         })
 
-        // Redirect to login page if not already there
         if (
           typeof window !== "undefined" &&
           window.location.pathname !== "/" &&
@@ -138,7 +136,6 @@ apiClient.interceptors.response.use(
 
 // API service functions with proper error handling and type safety
 export const api = {
-  // Wallet endpoints
   wallet: {
     getInfo: async () => {
       try {
@@ -160,18 +157,19 @@ export const api = {
 
     import: async (privateKey: string) => {
       try {
-        const response = await apiClient.post("/wallet/import", { private_key: privateKey })
+        const response = await apiClient.post("/api/wallet", { private_key: privateKey })
         return response.data
       } catch (error) {
         throw error
       }
     },
 
-    transact: async (recipient: string, amount: number) => {
+    transact: async (recipient: string, amount: number, fee: { fee: number }) => {
       try {
         const response = await apiClient.post("/wallet/transact", {
           recipient,
           amount: Number(amount), // Ensure amount is a number
+          fee: Number(fee.fee) || 0, // Ensure fee is a number
         })
         return response.data
       } catch (error) {
@@ -180,7 +178,6 @@ export const api = {
     },
   },
 
-  // Blockchain endpoints
   blockchain: {
     getAll: async () => {
       try {
@@ -210,7 +207,6 @@ export const api = {
     },
   },
 
-  // Transaction endpoints
   transactions: {
     getPending: async () => {
       try {

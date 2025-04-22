@@ -26,7 +26,7 @@ def test_clear_blockchain_transaction_pool():
     assert transaction1.id in transaction_pool.transaction_map
     assert transaction2.id in transaction_pool.transaction_map
 
-    transaction_pool.clear_blockchain_transaction(blockchain)    
+    transaction_pool.clear_blockchain_transactions(blockchain)    
 
     assert not transaction1.id in transaction_pool.transaction_map
     assert not transaction2.id in transaction_pool.transaction_map

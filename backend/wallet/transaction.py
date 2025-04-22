@@ -69,6 +69,8 @@ class Transaction:
             self.output[sender_wallet.address] -= amount
             self.input = self.create_input(sender_wallet, self.output)
             self.size = self.calculate_size()
+            # Update timestamp and ID
+            self.input['timestamp'] = time.time_ns()
         except Exception as e:
             self.logger.error(f"Error updating transaction: {str(e)}")
             raise
@@ -116,19 +118,22 @@ class Transaction:
             subsidy = BLOCK_SUBSIDY // (2 ** (block_height // HALVING_INTERVAL))
             total_reward = subsidy + total_fees
 
+            if total_reward <= 0:
+                raise ValueError("Total reward must be positive")
+
             coinbase_input = {
                 'timestamp': time.time_ns(),
                 'address': 'coinbase',
                 'public_key': 'coinbase',
                 'signature': 'coinbase',
                 'coinbase_data': f'Height:{block_height}',
-                'block_height': block_height
+                'block_height': block_height,
+                'subsidy': subsidy,  # Store subsidy here
+                'fees': total_fees  # Store fees here
             }
 
             output = {
-                miner_address: total_reward,
-                'subsidy': subsidy,
-                'fees': total_fees
+                miner_address: total_reward  # Only the miner's reward
             }
 
             return Transaction(
@@ -161,14 +166,14 @@ class Transaction:
         try:
             is_coinbase = transaction_json.get('is_coinbase', 
                 transaction_json.get('input', {}).get('address') == 'coinbase')
-                
+            
             return Transaction(
-                id=transaction_json.get('id'),
-                output=transaction_json.get('output'),
-                input=transaction_json.get('input'),
-                fee=transaction_json.get('fee', 0),
-                size=transaction_json.get('size', BASE_TX_SIZE),
-                is_coinbase=is_coinbase
+                id=transaction_json['id'],
+                output=transaction_json['output'],
+                input=transaction_json['input'],
+                fee=transaction_json['fee'],
+                size=transaction_json['size'],
+                is_coinbase=transaction_json['is_coinbase']
             )
         except Exception as e:
             logging.getLogger(__name__).error(f"Error deserializing transaction: {str(e)}")

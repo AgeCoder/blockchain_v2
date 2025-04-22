@@ -50,7 +50,7 @@ def register_routes_blockchain(app):
                 return jsonify({'error': 'Miner wallet not initialized'}), 400
 
             transactions = transaction_pool.get_priority_transactions()
-            total_fees = sum(tx.fee for tx in transactions)
+            total_fees = max(0, sum(tx.fee for tx in transactions))  # Ensure non-negative fees
 
             current_height = len(blockchain.chain)
             subsidy = BLOCK_SUBSIDY // (2 ** (current_height // HALVING_INTERVAL))
@@ -63,7 +63,7 @@ def register_routes_blockchain(app):
             block_data = [coinbase_tx] + transactions
             new_block = blockchain.add_block(block_data)
 
-            pubsub.broadcast_block(new_block)
+            pubsub.broadcast_block_sync(new_block)  # Use synchronous wrapper
             transaction_pool.clear_blockchain_transactions(blockchain)
 
             return jsonify({

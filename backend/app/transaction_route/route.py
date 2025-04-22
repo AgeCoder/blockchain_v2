@@ -6,9 +6,9 @@ def register_routes_transaction(app):
     blockchain = app.config['BLOCKCHAIN']
     transaction_pool = app.config['TX_POOL']
 
-    @app.route('/transaction')
-    def route_transaction():
-        return jsonify(transaction_pool.transaction_data())
+    @app.route('/transaction', methods=['GET'])
+    def route_transaction_pool():
+        return jsonify(app.config['TX_POOL'].to_json()), 200
         
     @app.route('/transactions/<string:address>')
     def route_transactions_by_address(address):

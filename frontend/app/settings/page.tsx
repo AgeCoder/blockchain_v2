@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Download, Copy, Eye, EyeOff, RefreshCw, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -11,14 +11,34 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useToast } from "@/components/ui/use-toast"
 import { useWallet } from "@/lib/wallet-provider"
+import { decryptprivateKey } from "@/lib/utils"
 
 export default function SettingsPage() {
   const { wallet, isLoading, refreshWallet, logout } = useWallet()
   const router = useRouter()
   const { toast } = useToast()
   const [showPrivateKey, setShowPrivateKey] = useState(false)
-  const [privateKey, setPrivateKey] = useState(() => localStorage.getItem("privateKey") || "")
+  const [privateKey, setPrivateKey] = useState('')
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  useEffect(() => {
+    getkeys()
+  }, [])
+
+  const getkeys = async () => {
+    if (typeof window !== "undefined") {
+      const encryptedprivateKey = localStorage.getItem("privateKey")
+
+      if (encryptedprivateKey) {
+        const privateKey = await decryptprivateKey(encryptedprivateKey, "aligthage.online.v2");
+        console.log(privateKey);
+        setPrivateKey(privateKey)
+      } else {
+        setPrivateKey('')
+      }
+    }
+  }
+
 
   if (isLoading) {
     return (
