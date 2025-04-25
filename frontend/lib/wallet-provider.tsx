@@ -42,7 +42,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         if (typeof window !== "undefined") {
           const encryptedPrivateKey = localStorage.getItem("privateKey")
           if (encryptedPrivateKey) {
-            console.log(encryptedPrivateKey);
+
 
             // Decrypt the private key (use a static passphrase for now; in production, prompt user)
             const privateKey = await decryptPrivateKey(encryptedPrivateKey, "aligthage.online.v2");

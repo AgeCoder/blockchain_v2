@@ -16,13 +16,11 @@ def register_routes_wallet(app):
             data = request.get_json(silent=True)
             private_key_pem = data.get('private_key') if data else None
 
-            # Validate input
             if private_key_pem and not isinstance(private_key_pem, str):
                 return jsonify({'error': 'Private key must be a string'}), 400
             if private_key_pem and not private_key_pem.strip():
                 return jsonify({'error': 'Private key cannot be empty'}), 400
 
-            # Normalize private key PEM format (add newlines if missing)
             if private_key_pem:
                 private_key_pem = private_key_pem.strip()
                 match = re.match(
@@ -39,21 +37,17 @@ def register_routes_wallet(app):
                     f"-----END EC PRIVATE KEY-----"
                 )
 
-            # Initialize wallet
             wallet = None
             if private_key_pem:
                 try:
-                    # Deserialize private key and initialize wallet
                     private_key = Wallet.deserialize_private_key(None, private_key_pem)
                     wallet = Wallet(blockchain=blockchain, private_key=private_key)
                 except ValueError as e:
                     app.logger.error(f"Invalid private key: {str(e)}")
                     return jsonify({'error': f'Invalid private key: {str(e)}'}), 400
             else:
-                # Generate new wallet
                 wallet = Wallet(blockchain=blockchain)
 
-            # Save wallet instance in app config
             app.config['WALLET'] = wallet
 
             return jsonify({
@@ -63,12 +57,10 @@ def register_routes_wallet(app):
                 'privateKey': wallet.private_key_s,
                 'balance': wallet.balance
             }), 200
-
         except Exception as e:
             app.logger.error(f"Error initializing wallet: {str(e)}")
             return jsonify({'error': f'Failed to initialize wallet: {str(e)}'}), 500
 
-        
     @app.route('/wallet/info')
     def route_wallet_info():
         wallet = app.config.get('WALLET')
@@ -85,12 +77,10 @@ def register_routes_wallet(app):
     @app.route('/wallet/transact', methods=['POST'])
     def route_wallet_transact():
         try:
-            # 1. Validate wallet availability
             wallet = app.config.get('WALLET')
             if not wallet:
                 return jsonify({'error': 'Wallet not initialized'}), 400
 
-            # 2. Parse and validate request data
             data = request.get_json()
             if not data:
                 return jsonify({'error': 'Invalid JSON data'}), 400
@@ -103,47 +93,73 @@ def register_routes_wallet(app):
                 return jsonify({'error': 'Missing recipient or amount'}), 400
             if amount <= 0:
                 return jsonify({'error': 'Amount must be positive'}), 400
+            if recipient == wallet.address:
+                return jsonify({'error': 'Cannot send to self'}), 400
 
-            # 3. Check for existing transaction in pool
-            # transaction = transaction_pool.existing_transaction(wallet.address)
+            blockchain = app.config.get('BLOCKCHAIN')
+            transaction_pool = app.config.get('TX_POOL')
+            pubsub = app.config.get('PUBSUB')
+            if not blockchain or not transaction_pool or not pubsub:
+                return jsonify({'error': 'Blockchain, transaction pool, or PubSub not initialized'}), 400
 
-            # 4. Calculate dynamic fee
             estimated_size = BASE_TX_SIZE
             fee = max(fee_rate * estimated_size, MIN_FEE)
 
-            # 5. Create or update transaction
-            # if transaction:
-            #     try:
-            #         transaction.fee = fee
-            #         transaction.update(wallet, recipient, amount)
-            #     except Exception as e:
-            #         app.logger.error(f"Transaction update failed: {str(e)}")
-            #         return jsonify({'error': str(e)}), 400
-            # else:
+            confirmed_balance = wallet.calculate_balance(blockchain, wallet.address)
+            pending_txs = [tx for tx in transaction_pool.transaction_map.values() 
+                          if tx.input.get('address') == wallet.address]
+            total_pending_spend = sum(
+                sum(v for k, v in tx.output.items() if k != wallet.address) + tx.fee
+                for tx in pending_txs
+            )
+            available_balance = confirmed_balance - total_pending_spend
+
+            total_cost = amount + fee
+            if total_cost > available_balance:
+                error_msg = (
+                    f"Insufficient funds. Available: {available_balance:.4f} COIN, "
+                    f"Required: {total_cost:.4f} COIN (Amount: {amount:.4f} + Fee: {fee:.4f}). "
+                    f"Pending transactions: {len(pending_txs)}"
+                )
+                return jsonify({'error': error_msg}), 400
+
             try:
                 transaction = Transaction(
                     sender_wallet=wallet,
                     recipient=recipient,
                     amount=amount,
                     fee=fee
-                        )
+                )
             except Exception as e:
-                    app.logger.error(f"Transaction creation failed: {str(e)}")
-                    return jsonify({'error': str(e)}), 400
+                app.logger.error(f"Transaction creation/update failed: {str(e)}")
+                return jsonify({'error': str(e)}), 400
 
-            # 6. Validate and broadcast using the synchronous wrapper
-            Transaction.is_valid(transaction)
-            pubsub.broadcast_transaction_sync(transaction)
+            try:
+                Transaction.is_valid(transaction)
+                transaction_pool.set_transaction(transaction)
+            except Exception as e:
+                app.logger.error(f"Transaction validation failed: {str(e)}")
+                return jsonify({'error': f'Invalid transaction rw159: {str(e)}'}), 400
 
-            # 7. Return response
+            try:
+                pubsub.broadcast_transaction_sync(transaction)
+            except Exception as e:
+                app.logger.error(f"Broadcast failed: {str(e)}")
+                transaction_pool.transaction_map.pop(transaction.id, None)
+                return jsonify({'error': f'Broadcast failed: {str(e)}'}), 500
+
             return jsonify({
                 'message': 'Transaction created successfully',
                 'transaction': transaction.to_json(),
                 'fee': transaction.fee,
                 'size': transaction.size,
-                'timestamp': time.time_ns()
+                'timestamp': time.time_ns(),
+                'balance_info': {
+                    'confirmed_balance': confirmed_balance,
+                    'pending_spend': total_pending_spend + total_cost,
+                    'available_balance': available_balance - total_cost
+                }
             }), 200
-
         except ValueError as e:
             app.logger.error(f"Value error: {str(e)}")
             return jsonify({'error': f'Invalid numeric value: {str(e)}'}), 400

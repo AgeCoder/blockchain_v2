@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Wallet, AlertCircle } from "lucide-react"
+import { ArrowLeft, Wallet, AlertCircle, Upload } from "lucide-react"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -42,13 +42,16 @@ export default function ImportWalletPage() {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
-      className="container max-w-md mx-auto px-4 py-12"
+      className="max-w-md mx-auto wallet-section mt-10"
     >
-      <Link href="/" className="flex items-center text-sm mb-8 hover:underline">
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to home
-      </Link>
+      <Button variant="ghost" className="mb-6" asChild>
+        <Link href="/">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to Dashboard
+        </Link>
+      </Button>
 
-      <Card>
+      <Card className="wallet-card">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Wallet className="h-5 w-5" /> Import Wallet
@@ -76,6 +79,7 @@ export default function ImportWalletPage() {
         </CardContent>
         <CardFooter>
           <Button onClick={handleImport} className="w-full" disabled={isLoading || importing || !privateKey.trim()}>
+            <Upload className="mr-2 h-4 w-4" />
             {importing ? (
               <>
                 <LoadingSpinner className="mr-2" />
@@ -90,3 +94,4 @@ export default function ImportWalletPage() {
     </motion.div>
   )
 }
+

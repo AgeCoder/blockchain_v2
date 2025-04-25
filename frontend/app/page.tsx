@@ -21,23 +21,7 @@ export default function Home() {
           Manage your wallet, send transactions, and explore the blockchain with a beautiful and secure interface.
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 mt-6">
-          <Button asChild size="lg" className="px-6 py-5 text-base shadow-md hover:scale-105 transition">
-            <Link href="/wallet/create">
-              Create Wallet <ArrowRight className="h-4 w-4 ml-2" />
-            </Link>
-          </Button>
-          <Button
-            asChild
-            variant="outline"
-            size="lg"
-            className="px-6 py-5 text-base hover:border-muted-foreground hover:scale-105 transition"
-          >
-            <Link href="/wallet/import">
-              Import Wallet <Wallet className="h-4 w-4 ml-2" />
-            </Link>
-          </Button>
-        </div>
+
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-8 mt-20">
@@ -48,8 +32,6 @@ export default function Home() {
             desc: "Create or import wallets securely",
             content:
               "Create a new wallet or import an existing one. Your keys are stored securely in your browser only.",
-            href: "/wallet/create",
-            cta: "Get Started"
           },
           {
             title: "Blockchain Explorer",
@@ -58,7 +40,6 @@ export default function Home() {
             content:
               "Explore the blockchain: view blocks, transactions, and track transaction history easily.",
             href: "/explorer",
-            cta: "Explore"
           },
           {
             title: "Secure Transactions",
@@ -67,9 +48,8 @@ export default function Home() {
             content:
               "Send transactions confidently. Your private keys never leave the browser and are encrypted.",
             href: "/dashboard",
-            cta: "Dashboard"
           }
-        ].map(({ title, icon, desc, content, href, cta }, i) => (
+        ].map(({ title, icon, desc, content, href }, i) => (
           <Card
             key={i}
             className="hover:shadow-xl transition-transform hover:-translate-y-1 rounded-2xl"
@@ -83,13 +63,7 @@ export default function Home() {
             <CardContent>
               <p className="text-muted-foreground">{content}</p>
             </CardContent>
-            <CardFooter>
-              <Button asChild variant="ghost" className="gap-1 text-primary">
-                <Link href={href}>
-                  {cta} <ArrowRight className="h-4 w-4 ml-1" />
-                </Link>
-              </Button>
-            </CardFooter>
+
           </Card>
         ))}
       </div>

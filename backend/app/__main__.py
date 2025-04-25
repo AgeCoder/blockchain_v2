@@ -76,7 +76,6 @@ if __name__ == "__main__":
     pubsub = PubSub(blockchain, transaction_pool)
     app = create_app(blockchain, transaction_pool, pubsub)
 
-    
 
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)

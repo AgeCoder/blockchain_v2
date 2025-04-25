@@ -3,9 +3,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { Toaster } from "@/components/ui/sonner"
-import { SidebarProvider } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
+
 import { AuthProvider } from "@/lib/auth-provider"
 
 const inter = Inter({ subsets: ["latin"] })
@@ -13,7 +11,6 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Blockchain Explorer",
   description: "A secure blockchain wallet and explorer",
-  generator: 'v0.dev'
 }
 
 export default function RootLayout({
@@ -26,15 +23,22 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <WalletProvider>
-
             <AuthProvider>
-              <SidebarProvider defaultOpen={true}>
-                <div className="flex min-h-screen">
-                  <AppSidebar />
-                  <main className="flex-1 overflow-x-hidden">{children}</main>
+              <Navbar />
+              <div className="flex min-h-screen">
+                <main className="flex-1 overflow-x-hidden">{children}</main>
+              </div>
+              <footer className="border-t py-6 md:py-0">
+                <div className="container flex flex-col md:h-16 items-center justify-between gap-4 md:flex-row">
+                  <p className="text-sm text-muted-foreground">
+                    &copy; {new Date().getFullYear()} Blockchain Wallet. All rights reserved.
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Network Status: <span className="text-green-500">Connected</span>
+                  </p>
                 </div>
-                <Toaster />
-              </SidebarProvider>
+              </footer>
+              <Toaster />
             </AuthProvider>
           </WalletProvider>
         </ThemeProvider>
@@ -46,3 +50,7 @@ export default function RootLayout({
 
 import './globals.css'
 import { WalletProvider } from "@/lib/wallet-provider"
+import { Navbar } from "@/components/navbar"
+import { Toaster } from "@/components/ui/toaster"
+
+

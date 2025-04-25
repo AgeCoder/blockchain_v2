@@ -34,51 +34,37 @@ def register_routes_blockchain(app):
             logger.error(f"Error fetching blockchain range: {str(e)}")
             return jsonify({'error': 'Internal server error'}), 500
 
-    @app.route('/blockchain/length', methods=['GET'])
-    def route_blockchain_length():
-        try:
-            return jsonify({'length': len(blockchain.chain)}), 200
-        except Exception as e:
-            logger.error(f"Error fetching blockchain length: {str(e)}")
-            return jsonify({'error': 'Internal server error'}), 500
-
-    @app.route('/blockchain/mine', methods=['POST'])
-    def route_blockchain_mine():
+    @app.route('/mine', methods=['POST'])
+    def route_mine():
         try:
             wallet = app.config.get('WALLET')
-            if not wallet:
-                return jsonify({'error': 'Miner wallet not initialized'}), 400
-
-            transactions = transaction_pool.get_priority_transactions()
-            total_fees = max(0, sum(tx.fee for tx in transactions))  # Ensure non-negative fees
-
-            current_height = len(blockchain.chain)
-            subsidy = BLOCK_SUBSIDY // (2 ** (current_height // HALVING_INTERVAL))
-            coinbase_tx = Transaction.create_coinbase(
-                miner_address=wallet.address,
-                block_height=current_height + 1,
-                total_fees=total_fees
-            )
-
-            block_data = [coinbase_tx] + transactions
-            new_block = blockchain.add_block(block_data)
-
-            pubsub.broadcast_block_sync(new_block)  # Use synchronous wrapper
+            blockchain = app.config.get('BLOCKCHAIN')
+            transaction_pool = app.config.get('TX_POOL')
+            pubsub = app.config.get('PUBSUB')
+            if not wallet or not blockchain or not transaction_pool or not pubsub:
+                return jsonify({'error': 'Blockchain, transaction pool, wallet, or PubSub not initialized'}), 400
+            transactions = transaction_pool.get_priority_transactions()[:10]
+            valid_transactions = []
+            for tx in transactions:
+                try:
+                    Transaction.is_valid(tx)
+                    valid_transactions.append(tx)
+                except Exception as e:
+                    app.logger.warning(f"Invalid transaction {tx.id} skipped: {str(e)}")
+                    
+            total_fees = sum(tx.fee for tx in valid_transactions)
+            coinbase_tx = Transaction.create_coinbase(wallet.address, blockchain.current_height + 1, total_fees)
+            all_transactions = [coinbase_tx] + valid_transactions
+            new_block = blockchain.add_block(all_transactions)
             transaction_pool.clear_blockchain_transactions(blockchain)
-
+            pubsub.broadcast_block_sync(new_block)
+            confirmed_balance = wallet.calculate_balance(blockchain, wallet.address)
             return jsonify({
-                'message': 'New block mined successfully',
+                'message': 'Block mined successfully',
                 'block': new_block.to_json(),
-                'reward': {
-                    'subsidy': subsidy,
-                    'fees': total_fees,
-                    'total': subsidy + total_fees
-                },
-                'transactions': len(block_data),
-                'difficulty': new_block.difficulty,
-                'timestamp': time.time_ns()
+                'reward': coinbase_tx.output[wallet.address],
+                'confirmed_balance': confirmed_balance
             }), 200
-
         except Exception as e:
-            logger.error(f"Mining error: {str(e)}")
-            return jsonify({'error': f'Mining failed: {str(e)}'}), 500
+            app.logger.error(f"Unexpected error in mining: {str(e)}")
+            return jsonify({'error': str(e)}), 500

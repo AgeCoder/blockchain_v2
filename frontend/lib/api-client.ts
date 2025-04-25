@@ -47,9 +47,7 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => {
     // Log successful responses in development
-    if (process.env.NODE_ENV === "development") {
-      console.log(`✅ [API] Response:`, response.status, response.data)
-    }
+
     return response
   },
   (error) => {

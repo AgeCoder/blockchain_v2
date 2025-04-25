@@ -71,13 +71,16 @@ export default function CreateWalletPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="container max-w-md mx-auto px-4 py-12"
+        className="container max-w-md mx-auto px-4 py-4"
       >
-        <Link href="/" className="flex items-center text-sm mb-8 hover:underline">
-          <ArrowLeft className="mr-2 h-4 w-4" /> Back to home
-        </Link>
+        <Button variant="ghost" className="mb-6" asChild>
+          <Link href="/">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Link>
+        </Button>
 
-        <Card>
+        <Card className="wallet-card">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Wallet className="h-5 w-5" /> Create New Wallet
@@ -85,13 +88,10 @@ export default function CreateWalletPage() {
             <CardDescription>Generate a new blockchain wallet</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex justify-center py-6">
-              <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
-              >
-                <Shield className="h-16 w-16 text-primary" />
-              </motion.div>
+            <div className="flex justify-center items-center py-2">
+
+              <Shield className="h-28 w-28 text-primary" />
+
             </div>
             <p className="text-sm text-muted-foreground">
               We'll generate a new wallet for you with a secure private key. Make sure to back up your private key -

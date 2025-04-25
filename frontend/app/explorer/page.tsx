@@ -1,20 +1,22 @@
 'use client'
 import React, { useEffect, useState, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Database, Clock, Copy, ChevronRight, Loader2 } from "lucide-react"
+import { Search, Database, Clock, Copy, ChevronRight, Loader2, HardDrive, Layers, Hash, Coins, ArrowRightLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api } from "@/lib/api-client"
 import { formatDistanceToNow } from "date-fns"
 import { useToast } from "@/components/ui/use-toast"
 import { debounce } from "lodash"
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll"
 
-// Types aligned with backend schema
 interface Transaction {
   id: string
   is_coinbase: boolean
@@ -47,7 +49,7 @@ const useDebounce = <T extends (...args: any[]) => any>(callback: T, delay: numb
   return useMemo(() => debounce(callback, delay), [callback, delay])
 }
 
-export default function ExplorerPage() {
+const ExplorerPage = () => {
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(true)
@@ -132,7 +134,7 @@ export default function ExplorerPage() {
 
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text)
-    toast({ title: "Copied", description: "Text copied to clipboard" })
+    toast({ title: "Copied to clipboard", description: "The content has been copied to your clipboard." })
   }, [toast])
 
   const viewBlockDetails = useCallback(
@@ -150,181 +152,246 @@ export default function ExplorerPage() {
     debouncedSearch(searchQuery)
   }, [searchQuery, debouncedSearch])
 
+  const totalTransactions = blocks.reduce((acc, block) => acc + block.data.length, 0)
+  const latestDifficulty = blocks.length > 0 ? blocks[0].difficulty : 3
+  const displayedBlocks = searchResults.length > 0 ? searchResults : blocks
+  const blockchainProgress = blockchainLength > 0 ? (blocks.length / blockchainLength) * 100 : 0
+
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8" role="region" aria-label="Loading blockchain explorer">
-        <Skeleton className="h-12 w-full max-w-md mb-6" />
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-10 w-full md:w-96" />
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-[100px]" />
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <Skeleton className="h-6 w-24" />
+                <Skeleton className="h-6 w-6 rounded-full" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-32 mt-2" />
+                <Skeleton className="h-4 w-full mt-4" />
+              </CardContent>
+            </Card>
           ))}
         </div>
-        <Skeleton className="h-8 w-48 mb-4" />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-[200px]" />
+
+        <Skeleton className="h-10 w-48 mb-6" />
+        <div className="space-y-4">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} className="h-20 w-full" />
           ))}
         </div>
       </div>
     )
   }
 
-  const displayedBlocks = searchResults.length > 0 ? searchResults : blocks
-  const totalTransactions = blocks.reduce((acc, block) => acc + block.data.length, 0)
-  const latestDifficulty = blocks.length > 0 ? blocks[0].difficulty : 3
-
   return (
     <TooltipProvider>
-      <div className="container mx-auto px-4 py-8" role="main" aria-label="Blockchain Explorer">
+      <div className="container mx-auto px-4 py-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <h1 className="text-3xl font-bold">Blockchain Explorer</h1>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              handleSearch(searchQuery)
-            }}
-            className="w-full md:w-auto"
-          >
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search by block hash, height, tx ID, or address..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 w-full md:w-[400px]"
-                aria-label="Search blocks and transactions"
-              />
-            </div>
-          </form>
+          <div>
+            <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
+              Blockchain Explorer
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Explore transactions, blocks, and network activity
+            </p>
+          </div>
+          <div className="relative w-full md:w-auto">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search by block, tx, address..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 w-full md:w-96 bg-background/50 backdrop-blur-sm"
+            />
+          </div>
         </div>
+
+
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-2xl">{blockchainLength}</CardTitle>
-              <CardDescription>Total Blocks</CardDescription>
+          <Card className="bg-gradient-to-br from-background to-muted/50 border-primary/20">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Blocks
+              </CardTitle>
+              <Layers className="h-4 w-4 text-primary" />
             </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{blockchainLength}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                +{blocks.length > 0 ? formatDistanceToNow(new Date(blocks[0].timestamp / 1_000_000), { addSuffix: true }) : 'N/A'}
+              </p>
+            </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-2xl">{totalTransactions}</CardTitle>
-              <CardDescription>Total Transactions</CardDescription>
+
+          <Card className="bg-gradient-to-br from-background to-muted/50 border-primary/20">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Total Transactions
+              </CardTitle>
+              <ArrowRightLeft className="h-4 w-4 text-primary" />
             </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{totalTransactions}</div>
+              <p className="text-xs text-muted-foreground mt-1">
+                ~{(totalTransactions / blockchainLength).toFixed(1)} tx/block
+              </p>
+            </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-2xl">{latestDifficulty}</CardTitle>
-              <CardDescription>Current Difficulty</CardDescription>
+
+          <Card className="bg-gradient-to-br from-background to-muted/50 border-primary/20">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Network Difficulty
+              </CardTitle>
+              <Hash className="h-4 w-4 text-primary" />
             </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{latestDifficulty}</div>
+              <Progress value={Math.min(latestDifficulty * 10, 100)} className="h-2 mt-2" />
+            </CardContent>
           </Card>
         </div>
 
-        <h2 className="text-2xl font-bold mb-4">Latest Blocks</h2>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold">
+            {searchResults.length > 0 ? 'Search Results' : 'Latest Blocks'}
+          </h2>
+          {blocks.length > 0 && (
+            <Badge variant="outline" className="px-3 py-1 text-sm">
+              Synced {blocks.length} of {blockchainLength} blocks
+            </Badge>
+          )}
+        </div>
 
         {isSearching ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin" aria-label="Searching blocks" />
+          <div className="flex flex-col items-center justify-center py-12 gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <p className="text-muted-foreground">Searching blockchain...</p>
           </div>
         ) : displayedBlocks.length === 0 ? (
-          <p className="text-center text-muted-foreground">No blocks found</p>
+          <Card className="bg-background/50 backdrop-blur-sm">
+            <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
+              <Database className="h-10 w-10 text-muted-foreground" />
+              <p className="text-muted-foreground">No blocks found</p>
+              {searchQuery && (
+                <Button variant="outline" onClick={() => setSearchQuery('')}>
+                  Clear search
+                </Button>
+              )}
+            </CardContent>
+          </Card>
         ) : (
-          <Table role="grid" aria-label="Blocks table">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Height</TableHead>
-                <TableHead>Hash</TableHead>
-                <TableHead>Previous Hash</TableHead>
-                <TableHead>Transactions</TableHead>
-                <TableHead>Fees</TableHead>
-                <TableHead>Time</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {displayedBlocks.map((block) => {
-                const totalFees = block.data
-                  .filter((tx: Transaction) => tx.is_coinbase)
-                  .reduce((acc, tx) => acc + (tx.input.fees || 0), 0)
-                return (
-                  <TableRow
-                    key={block.hash}
-                    role="row"
-                    tabIndex={0}
-                    onClick={() => viewBlockDetails(block)}
-                    onKeyDown={(e) => e.key === "Enter" && viewBlockDetails(block)}
-                    className="cursor-pointer hover:bg-muted"
-                  >
-                    <TableCell>{block.height}</TableCell>
-                    <TableCell>
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <span
-                            className="font-mono truncate max-w-[150px] inline-block"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              copyToClipboard(block.hash)
-                            }}
-                          >
-                            {block.hash}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {block.hash}
-                          <Copy className="h-4 w-4 ml-2 inline" aria-hidden="true" />
-                        </TooltipContent>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell>
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <span
-                            className="font-mono truncate max-w-[150px] inline-block"
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              copyToClipboard(block.last_hash)
-                            }}
-                          >
-                            {block.last_hash}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {block.last_hash}
-                          <Copy className="h-4 w-4 ml-2 inline" aria-hidden="true" />
-                        </TooltipContent>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell>{block.data.length}</TableCell>
-                    <TableCell>{totalFees.toFixed(6)}</TableCell>
-                    <TableCell>
-                      {formatDistanceToNow(new Date(block.timestamp / 1_000_000), { addSuffix: true })}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          viewBlockDetails(block)
-                        }}
-                        aria-label={`View details for block ${block.height}`}
-                      >
-                        Details <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
+          <div className="space-y-4">
+            {displayedBlocks.map((block) => {
+              const totalFees = block.data
+                .filter((tx: Transaction) => tx.is_coinbase)
+                .reduce((acc, tx) => acc + (tx.input.fees || 0), 0)
+              const timestamp = new Date(block.timestamp / 1_000_000)
+
+              return (
+                <Card
+                  key={block.hash}
+                  className="transition-all hover:border-primary/50 hover:shadow-lg cursor-pointer bg-background/50 backdrop-blur-sm"
+                  onClick={() => viewBlockDetails(block)}
+                >
+                  <CardContent className="p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                      <div className="md:col-span-2 flex items-center gap-3">
+                        <div className="bg-primary/10 p-2 rounded-full">
+                          <HardDrive className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium">Block {block.height}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {formatDistanceToNow(timestamp, { addSuffix: true })}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="md:col-span-6">
+                        <div className="flex flex-col gap-2">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div
+                                className="flex items-center gap-2 font-mono text-sm hover:text-primary transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  copyToClipboard(block.hash)
+                                }}
+                              >
+                                <span className="truncate">{block.hash}</span>
+                                <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Block hash</p>
+                            </TooltipContent>
+                          </Tooltip>
+
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div
+                                className="flex items-center gap-2 font-mono text-sm text-muted-foreground hover:text-primary transition-colors"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  copyToClipboard(block.last_hash)
+                                }}
+                              >
+                                <span className="truncate">Prev: {block.last_hash}</span>
+                                <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Previous block hash</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </div>
+                      </div>
+
+                      <div className="md:col-span-2">
+                        <Badge variant="secondary" className="px-3 py-1">
+                          {block.data.length} {block.data.length === 1 ? 'tx' : 'txs'}
+                        </Badge>
+                      </div>
+
+                      <div className="md:col-span-2 flex justify-end">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            viewBlockDetails(block)
+                          }}
+                        >
+                          Details
+                          <ChevronRight className="ml-1 h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
         )}
 
         {blocks.length < blockchainLength && !searchResults.length && (
           <div ref={observerRef} className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin" aria-label="Loading more blocks" />
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
           </div>
         )}
       </div>
     </TooltipProvider>
   )
 }
+
+export default ExplorerPage

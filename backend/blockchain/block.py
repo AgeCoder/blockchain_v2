@@ -4,27 +4,31 @@ import json
 from backend.utils.cryptohash import crypto_hash
 from backend.config import MINRATE, BLOCK_SIZE_LIMIT, TARGET_BLOCK_TIME
 from backend.utils.hex_to_binary import hex_to_binary
+from backend.wallet.transaction import Transaction
+from backend.config import BLOCK_SUBSIDY, HALVING_INTERVAL
 
 GENESIS_DATA = {
-    "data": [{
-        "id": "genesis_initial_tx",
-        "input": {
-            "address": "coinbase",
-            "block_height": 0,
-            "coinbase_data": "Initial funding",
-            "fees": 0,
-            "public_key": "coinbase",
-            "signature": "coinbase",
-            "subsidy": 1000,
-            "timestamp": 1
-        },
-        "is_coinbase": True,
-        "output": {
-            "20b2ee470d526eda4b12": 1000
-        },
-        "fee": 0,
-        "size": 250
-    }],
+    "data": [
+        {
+            "id": "genesis_initial_tx",
+            "input": {
+                "address": "coinbase",
+                "block_height": 0,
+                "coinbase_data": "Initial funding",
+                "fees": 0,
+                "public_key": "coinbase",
+                "signature": "coinbase",
+                "subsidy": 50,
+                "timestamp": 1
+            },
+            "is_coinbase": True,
+            "output": {
+                "20b2ee470d526eda4b12": 50
+            },
+            "fee": 0,
+            "size": 250
+        }
+    ],
     "difficulty": 3,
     "height": 0,
     "last_hash": "genesis_last_hash",
@@ -34,7 +38,6 @@ GENESIS_DATA = {
     "version": 1
 }
 
-# Compute Merkle root and hash for genesis block
 GENESIS_DATA["merkle_root"] = crypto_hash(json.dumps(GENESIS_DATA["data"][0], sort_keys=True))
 GENESIS_DATA["hash"] = crypto_hash(
     GENESIS_DATA["timestamp"],
@@ -72,6 +75,7 @@ class Block:
             raise
 
     def validate_block(self):
+        """Validate block properties."""
         if self.height < 0:
             raise ValueError("Block height cannot be negative")
         if self.difficulty < 1:
@@ -79,31 +83,8 @@ class Block:
         if self.tx_count != len(self.data):
             raise ValueError("Transaction count does not match data length")
 
-    def __repr__(self):
-        return (
-            f'Block('
-            f'timestamp: {self.timestamp}, '
-            f'last_hash: {self.last_hash}, '
-            f'hash: {self.hash}, '
-            f'data: {self.data}, '
-            f'difficulty: {self.difficulty}, '
-            f'nonce: {self.nonce}, '
-            f'height: {self.height}, '
-            f'version: {self.version}, '
-            f'merkle_root: {self.merkle_root}, '
-            f'tx_count: {self.tx_count})'
-        )
-
-    def __eq__(self, other):
-        try:
-            if not isinstance(other, Block):
-                return False
-            return self.__dict__ == other.__dict__
-        except Exception as e:
-            self.logger.error(f"Error comparing blocks: {str(e)}")
-            return False
-
     def to_json(self):
+        """Serialize block to JSON."""
         try:
             return {
                 'timestamp': self.timestamp,
@@ -123,6 +104,7 @@ class Block:
 
     @staticmethod
     def mine_block(last_block, data):
+        """Mine a new block."""
         try:
             if not isinstance(last_block, Block):
                 raise ValueError("Invalid last block")
@@ -161,16 +143,14 @@ class Block:
 
     @staticmethod
     def calculate_merkle_root(data):
+        """Calculate Merkle root for transactions."""
         try:
             if not data:
                 return crypto_hash('')
 
-            # Canonical JSON serialization with sorted keys and fixed float precision
             hashes = []
             for tx in data:
-                # Ensure tx is a dict (convert Transaction to JSON if needed)
                 tx_json = tx if isinstance(tx, dict) else tx.to_json()
-                # Serialize with sorted keys and fixed precision (4 decimals)
                 serialized_tx = json.dumps(tx_json, sort_keys=True, separators=(',', ':'), default=lambda x: f"{x:.4f}" if isinstance(x, float) else x)
                 tx_hash = crypto_hash(serialized_tx)
                 hashes.append(tx_hash)
@@ -185,7 +165,7 @@ class Block:
                         temp.append(hashes[i])
                 hashes = temp
 
-            logging.getLogger(__name__).info(f"Merkle root: {hashes[0]}")
+            
             return hashes[0]
         except Exception as e:
             logging.getLogger(__name__).error(f"Error calculating Merkle root: {str(e)}")
@@ -193,6 +173,7 @@ class Block:
 
     @staticmethod
     def genesis():
+        """Create genesis block."""
         try:
             return Block(**GENESIS_DATA)
         except Exception as e:
@@ -201,6 +182,7 @@ class Block:
 
     @staticmethod
     def from_json(block_json):
+        """Deserialize block from JSON."""
         try:
             return Block(
                 timestamp=block_json['timestamp'],
@@ -220,6 +202,7 @@ class Block:
 
     @staticmethod
     def adjust_difficulty(last_block, new_timestamp):
+        """Adjust mining difficulty."""
         try:
             time_diff = (new_timestamp - last_block.timestamp) / 1_000_000_000
             if time_diff < MINRATE:
@@ -233,6 +216,7 @@ class Block:
 
     @staticmethod
     def is_valid_block(last_block, block):
+        """Validate a block."""
         try:
             if not isinstance(last_block, Block) or not isinstance(block, Block):
                 raise ValueError("Invalid block types")
@@ -263,6 +247,36 @@ class Block:
 
             if reconstructed_hash != block.hash:
                 raise ValueError("Block hash mismatch")
+
+            # Validate transactions
+            coinbase_count = 0
+            total_fees = 0.0
+            coinbase_tx = None
+            # First pass: collect fees from non-coinbase transactions
+            for tx_json in block.data:
+                tx = Transaction.from_json(tx_json)
+                Transaction.is_valid(tx)
+                if tx.is_coinbase:
+                    coinbase_count += 1
+                    if coinbase_count > 1:
+                        raise ValueError("Multiple coinbase transactions")
+                    coinbase_tx = tx
+                else:
+                    total_fees += tx.fee
+
+            # Second pass: validate coinbase transaction with total fees
+            if coinbase_tx:
+                subsidy = BLOCK_SUBSIDY // (2 ** (block.height // HALVING_INTERVAL))
+                total_output = sum(v for k, v in coinbase_tx.output.items())
+                if total_output > subsidy + total_fees:
+                    logging.getLogger(__name__).error(
+                        f"Invalid coinbase output: {total_output} exceeds subsidy {subsidy} + fees {total_fees}"
+                    )
+                    raise ValueError(f"Invalid coinbase output: {total_output} exceeds {subsidy} + {total_fees}")
+
+            if coinbase_count == 0 and block.height > 0:
+                raise ValueError("Missing coinbase transaction")
+
         except Exception as e:
             logging.getLogger(__name__).error(f"Error validating block: {str(e)}")
             raise

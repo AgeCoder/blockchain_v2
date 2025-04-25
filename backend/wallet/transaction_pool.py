@@ -43,24 +43,17 @@ class TransactionPool:
             return []
 
     def clear_blockchain_transactions(self, blockchain):
-        try:
-            for block in blockchain.chain:
-                for transaction in block.data:
-                    if isinstance(transaction, dict) and 'id' in transaction:
-                        self.transaction_map.pop(transaction['id'], None)
-        except Exception as e:
-            self.logger.error(f"Error clearing transactions: {str(e)}")
+        """Remove transactions included in blockchain."""
+        for block in blockchain.chain:
+            for tx_json in block.data:
+                tx = Transaction.from_json(tx_json)
+                if tx.id in self.transaction_map:
+                    self.transaction_map.pop(tx.id)
+                    self.logger.debug(f"Cleared transaction {tx.id} from pool")
 
     def get_priority_transactions(self):
-        try:
-            return sorted(
-                self.transaction_map.values(),
-                key=lambda tx: tx.fee if hasattr(tx, 'fee') else 0,
-                reverse=True
-            )
-        except Exception as e:
-            self.logger.error(f"Error getting priority transactions: {str(e)}")
-            return []
+        """Return transactions sorted by fee/size."""
+        return sorted(self.transaction_map.values(), key=lambda tx: tx.fee / tx.size, reverse=True)
 
     def to_json(self):
         try:

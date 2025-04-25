@@ -7,14 +7,12 @@ from backend.wallet.wallet import Wallet
 class Transaction:
     def __init__(self, sender_wallet=None, recipient=None, amount=None, id=None, 
                  output=None, input=None, fee=0, size=0, is_coinbase=False):
-        self.id = id or (f"coinbase_{str(uuid4())[:8]}" if is_coinbase else str(uuid4())[:8])
+        self.id = id or (f"coinbase_{str(uuid4())}" if is_coinbase else str(uuid4()))
         self.is_coinbase = is_coinbase
         self.fee = fee
         self.size = size or BASE_TX_SIZE
-        
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
-
         try:
             if is_coinbase:
                 self.output = output
@@ -30,27 +28,43 @@ class Transaction:
         try:
             if not sender_wallet or not recipient or amount <= 0:
                 raise ValueError("Invalid transaction parameters")
-                
-            if amount + self.fee > sender_wallet.balance:
-                raise ValueError("Amount + fee exceeds balance")
-
-            return {
+            available_balance = sender_wallet.calculate_balance(sender_wallet.blockchain, sender_wallet.address)
+            if amount + self.fee > available_balance:
+                raise ValueError(f"Amount {amount} + fee {self.fee} exceeds balance {available_balance}")
+            output = {
                 recipient: amount,
-                sender_wallet.address: sender_wallet.balance - amount - self.fee,
-                'fee': self.fee
+                sender_wallet.address: available_balance - amount - self.fee
             }
+            return output
         except Exception as e:
             self.logger.error(f"Error creating output: {str(e)}")
             raise
 
     def create_input(self, sender_wallet, output):
         try:
+            available_balance = sender_wallet.calculate_balance(sender_wallet.blockchain, sender_wallet.address)
+            required_amount = sum(v for k, v in output.items()) + self.fee
+            selected_utxos = []
+            total_input = 0
+            # Collect UTXOs until sufficient funds are available
+            for tx_id, outputs in sender_wallet.blockchain.utxo_set.items():
+                for addr, amount in outputs.items():
+                    if addr == sender_wallet.address:
+                        selected_utxos.append((tx_id, amount))
+                        total_input += amount
+                        if total_input >= required_amount:
+                            break
+                if total_input >= required_amount:
+                    break
+            if total_input < required_amount:
+                raise ValueError(f"Insufficient funds: available {total_input}, required {required_amount}")
             return {
                 'timestamp': time.time_ns(),
-                'amount': sender_wallet.balance,
+                'amount': total_input,
                 'address': sender_wallet.address,
                 'public_key': sender_wallet.public_key,
-                'signature': sender_wallet.sign(output)
+                'signature': sender_wallet.sign(output),
+                'prev_tx_ids': [tx_id for tx_id, _ in selected_utxos]  # Support multiple UTXOs
             }
         except Exception as e:
             self.logger.error(f"Error creating input: {str(e)}")
@@ -60,16 +74,13 @@ class Transaction:
         try:
             if amount <= 0:
                 raise ValueError("Invalid amount")
-                
             available = self.output.get(sender_wallet.address, 0)
             if amount > available:
                 raise ValueError("Amount exceeds available balance")
-
             self.output[recipient] = self.output.get(recipient, 0) + amount
             self.output[sender_wallet.address] -= amount
             self.input = self.create_input(sender_wallet, self.output)
             self.size = self.calculate_size()
-            # Update timestamp and ID
             self.input['timestamp'] = time.time_ns()
         except Exception as e:
             self.logger.error(f"Error updating transaction: {str(e)}")
@@ -87,26 +98,31 @@ class Transaction:
         try:
             if transaction.is_coinbase:
                 outputs = list(transaction.output.items())
+                block_height = transaction.input.get('block_height', 0)
+                subsidy = BLOCK_SUBSIDY // (2 ** (block_height // HALVING_INTERVAL))
+                total_fees = transaction.input.get('fees', 0)
                 if len(outputs) != 1 or outputs[0][1] <= 0:
                     raise ValueError("Invalid coinbase transaction output")
+                if outputs[0][1] > subsidy + total_fees:
+                    raise ValueError(f"Coinbase output {outputs[0][1]} exceeds subsidy {subsidy} + fees {total_fees}")
                 return True
-
             if transaction.input == MINING_REWARD_INPUT:
                 if list(transaction.output.values()) != [MINING_REWARD]:
                     raise ValueError("Invalid mining reward transaction")
                 return True
-
-            output_total = sum(v for k, v in transaction.output.items() if k != 'fee')
-            if transaction.input['amount'] != output_total + transaction.output.get('fee', 0):
-                raise ValueError("Invalid transaction output values")
-
+            output_total = sum(v for k, v in transaction.output.items())
+            input_amount = transaction.input.get('amount', 0)
+            if input_amount < output_total + transaction.fee:
+                raise ValueError(f"Invalid transaction output values: input {input_amount} < output {output_total} + fee {transaction.fee}")
             if not Wallet.verify(
                 transaction.input['public_key'],
                 transaction.output,
                 transaction.input['signature']
             ):
                 raise ValueError("Invalid signature")
-                
+            prev_tx_ids = transaction.input.get('prev_tx_ids', [])
+            if not prev_tx_ids:
+                raise ValueError("Transaction input missing prev_tx_ids")
             return True
         except Exception as e:
             logging.getLogger(__name__).error(f"Error validating transaction: {str(e)}")
@@ -117,10 +133,8 @@ class Transaction:
         try:
             subsidy = BLOCK_SUBSIDY // (2 ** (block_height // HALVING_INTERVAL))
             total_reward = subsidy + total_fees
-
             if total_reward <= 0:
                 raise ValueError("Total reward must be positive")
-
             coinbase_input = {
                 'timestamp': time.time_ns(),
                 'address': 'coinbase',
@@ -128,14 +142,10 @@ class Transaction:
                 'signature': 'coinbase',
                 'coinbase_data': f'Height:{block_height}',
                 'block_height': block_height,
-                'subsidy': subsidy,  # Store subsidy here
-                'fees': total_fees  # Store fees here
+                'subsidy': subsidy,
+                'fees': total_fees
             }
-
-            output = {
-                miner_address: total_reward  # Only the miner's reward
-            }
-
+            output = {miner_address: total_reward}
             return Transaction(
                 input=coinbase_input,
                 output=output,
@@ -166,14 +176,13 @@ class Transaction:
         try:
             is_coinbase = transaction_json.get('is_coinbase', 
                 transaction_json.get('input', {}).get('address') == 'coinbase')
-            
             return Transaction(
                 id=transaction_json['id'],
                 output=transaction_json['output'],
                 input=transaction_json['input'],
                 fee=transaction_json['fee'],
                 size=transaction_json['size'],
-                is_coinbase=transaction_json['is_coinbase']
+                is_coinbase=is_coinbase
             )
         except Exception as e:
             logging.getLogger(__name__).error(f"Error deserializing transaction: {str(e)}")
