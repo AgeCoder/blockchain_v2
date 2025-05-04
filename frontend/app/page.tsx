@@ -15,7 +15,7 @@ export default function Home() {
     <div className="container mx-auto px-4 py-16">
       <div className="flex flex-col items-center text-center space-y-6">
         <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold bg-gradient-to-r from-blue-500 to-purple-600 bg-clip-text text-transparent drop-shadow">
-          Secure Blockchain Wallet & Explorer
+          Secure ANTIG & Explorer
         </h1>
         <p className="max-w-2xl text-lg text-muted-foreground">
           Manage your wallet, send transactions, and explore the blockchain with a beautiful and secure interface.

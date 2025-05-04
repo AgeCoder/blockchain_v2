@@ -2,6 +2,9 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
+import { WalletProvider } from "@/lib/wallet-provider"
+import { Navbar } from "@/components/navbar"
+import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "@/components/theme-provider"
 
 import { AuthProvider } from "@/lib/auth-provider"
@@ -10,7 +13,7 @@ const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
   title: "Blockchain Explorer",
-  description: "A secure blockchain wallet and explorer",
+  description: "A secure ANTIG and explorer",
 }
 
 export default function RootLayout({
@@ -31,7 +34,7 @@ export default function RootLayout({
               <footer className="border-t py-6 md:py-0">
                 <div className="container flex flex-col md:h-16 items-center justify-between gap-4 md:flex-row">
                   <p className="text-sm text-muted-foreground">
-                    &copy; {new Date().getFullYear()} Blockchain Wallet. All rights reserved.
+                    &copy; {new Date().getFullYear()} ANTIG. All rights reserved.
                   </p>
                   <p className="text-sm text-muted-foreground">
                     Network Status: <span className="text-green-500">Connected</span>
@@ -48,9 +51,6 @@ export default function RootLayout({
 }
 
 
-import './globals.css'
-import { WalletProvider } from "@/lib/wallet-provider"
-import { Navbar } from "@/components/navbar"
-import { Toaster } from "@/components/ui/toaster"
+
 
 

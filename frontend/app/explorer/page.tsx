@@ -1,21 +1,19 @@
 'use client'
 import React, { useEffect, useState, useCallback, useMemo } from "react"
 import { useRouter } from "next/navigation"
-import { Search, Database, Clock, Copy, ChevronRight, Loader2, HardDrive, Layers, Hash, Coins, ArrowRightLeft } from "lucide-react"
+import { Search, Database, Clock, Copy, ChevronRight, Loader2, HardDrive, Layers, Hash, ArrowRightLeft, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { api } from "@/lib/api-client"
-import { formatDistanceToNow } from "date-fns"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { debounce } from "lodash"
 import { useInfiniteScroll } from "@/hooks/use-infinite-scroll"
+import { formatDistanceToNow } from "date-fns"
+import { api } from "@/lib/api-client"
 
 interface Transaction {
   id: string
@@ -39,15 +37,9 @@ interface Block {
   tx_count: number
 }
 
-interface BlockchainResponse {
-  chain: Block[]
-  utxo_set: Record<string, any>
-  current_height: number
-}
-
-const useDebounce = <T extends (...args: any[]) => any>(callback: T, delay: number) => {
-  return useMemo(() => debounce(callback, delay), [callback, delay])
-}
+const BLOCKS_PER_PAGE = 10
+const SEARCH_RESULTS_LIMIT = 5
+const DEBOUNCE_DELAY = 300
 
 const ExplorerPage = () => {
   const router = useRouter()
@@ -58,14 +50,23 @@ const ExplorerPage = () => {
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<Block[]>([])
   const [isSearching, setIsSearching] = useState(false)
+  const [hasMoreBlocks, setHasMoreBlocks] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchBlockchainData = useCallback(async () => {
     setIsLoading(true)
     try {
-      const lengthResponse = await api.blockchain.getLength()
-      setBlockchainLength(lengthResponse.length)
-      const response = await api.blockchain.getRange(0, 10)
-      setBlocks(response)
+      const [lengthResponse, paginatedResponse] = await Promise.all([
+        api.blockchain.getHeight(),
+        api.blockchain.getPaginated(1, BLOCKS_PER_PAGE)
+      ])
+
+      setBlockchainLength(lengthResponse.height)
+      setBlocks(paginatedResponse.blocks)
+      setTotalPages(paginatedResponse.total_pages)
+      setHasMoreBlocks(paginatedResponse.has_next)
     } catch (error) {
       console.error("Error fetching blockchain data:", error)
       toast({
@@ -79,12 +80,15 @@ const ExplorerPage = () => {
   }, [toast])
 
   const fetchMoreBlocks = useCallback(async () => {
-    if (blocks.length >= blockchainLength) return
+    if (!hasMoreBlocks || isSearching) return
+
     try {
-      const newStart = blocks.length
-      const newEnd = Math.min(newStart + 10, blockchainLength)
-      const response = await api.blockchain.getRange(newStart, newEnd)
-      setBlocks((prev) => [...prev, ...response])
+      const nextPage = currentPage + 1
+      const response = await api.blockchain.getPaginated(nextPage, BLOCKS_PER_PAGE)
+
+      setBlocks(prev => [...prev, ...response.blocks])
+      setCurrentPage(nextPage)
+      setHasMoreBlocks(response.has_next)
     } catch (error) {
       console.error("Error fetching more blocks:", error)
       toast({
@@ -93,97 +97,151 @@ const ExplorerPage = () => {
         variant: "destructive",
       })
     }
-  }, [blocks.length, blockchainLength, toast])
+  }, [currentPage, hasMoreBlocks, isSearching, toast])
 
-  const { observerRef } = useInfiniteScroll(fetchMoreBlocks, { isLoading: isLoading || isSearching })
+  const handleSearch = useCallback(async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([])
+      setIsSearching(false)
+      return
+    }
 
-  const handleSearch = useCallback(
-    async (query: string) => {
-      if (!query.trim()) {
-        setSearchResults([])
-        setIsSearching(false)
-        return
+    setIsSearching(true)
+    try {
+      if (!isNaN(Number(query))) {
+        try {
+          const block = await api.blockchain.getBlockByHeight(Number(query))
+          setSearchResults([block])
+          return
+        } catch (error) {
+          // Continue with general search if not found by height
+        }
       }
-      setIsSearching(true)
-      try {
-        const response = await api.blockchain.getAll()
-        const blocks = response.chain
-        const results = blocks.filter(
-          (block: Block) =>
-            block.hash.includes(query) ||
-            block.height.toString() === query ||
-            block.last_hash.includes(query) ||
-            block.data.some((tx: Transaction) => tx.id.includes(query) || Object.keys(tx.output).includes(query))
-        ).slice(0, 5)
-        setSearchResults(results)
-      } catch (error) {
-        console.error("Error searching blocks:", error)
-        toast({
-          title: "Error",
-          description: "Failed to search blocks",
-          variant: "destructive",
-        })
-      } finally {
-        setIsSearching(false)
+
+      if (query.length >= 16) {
+        try {
+          const block = await api.blockchain.getBlockByHash(query)
+          setSearchResults([block])
+          return
+        } catch (error) {
+          // Continue with general search if not found by hash
+        }
       }
-    },
-    [toast]
+
+      const latestBlocks = await api.blockchain.getLatest(SEARCH_RESULTS_LIMIT * 5)
+      const filteredBlocks = latestBlocks.filter(
+        (block: Block) =>
+          block.hash.includes(query) ||
+          block.height.toString() === query ||
+          block.last_hash.includes(query) ||
+          block.data.some((tx: Transaction) =>
+            tx.id.includes(query) ||
+            Object.keys(tx.output).some(address => address.includes(query))
+          )
+      ).slice(0, SEARCH_RESULTS_LIMIT)
+
+      setSearchResults(filteredBlocks)
+    } catch (error) {
+      console.error("Error searching blocks:", error)
+      toast({
+        title: "Error",
+        description: "Failed to search blocks",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSearching(false)
+    }
+  }, [toast])
+
+  const debouncedSearch = useMemo(() =>
+    debounce(handleSearch, DEBOUNCE_DELAY),
+    [handleSearch]
   )
-
-  const debouncedSearch = useDebounce(handleSearch, 300)
 
   const copyToClipboard = useCallback((text: string) => {
     navigator.clipboard.writeText(text)
-    toast({ title: "Copied to clipboard", description: "The content has been copied to your clipboard." })
+    toast({
+      title: "Copied to clipboard",
+      description: "The content has been copied to your clipboard.",
+      duration: 2000
+    })
   }, [toast])
 
-  const viewBlockDetails = useCallback(
-    (block: Block) => {
-      router.push(`/explorer/block/${block.height}`)
-    },
-    [router]
-  )
+  const viewBlockDetails = useCallback((block: Block) => {
+    router.push(`/explorer/block/${block.height}`)
+  }, [router])
+
+  const viewTransactionDetails = useCallback((txId: string) => {
+    router.push(`/explorer/transaction/${txId}`)
+  }, [router])
 
   useEffect(() => {
     fetchBlockchainData()
-  }, [fetchBlockchainData])
+    return () => debouncedSearch.cancel()
+  }, [fetchBlockchainData, debouncedSearch])
 
   useEffect(() => {
     debouncedSearch(searchQuery)
   }, [searchQuery, debouncedSearch])
 
-  const totalTransactions = blocks.reduce((acc, block) => acc + block.data.length, 0)
-  const latestDifficulty = blocks.length > 0 ? blocks[0].difficulty : 3
+  const { observerRef } = useInfiniteScroll(fetchMoreBlocks, {
+    isLoading: isLoading || isSearching,
+  })
+
+  const totalTransactions = useMemo(() =>
+    blocks.reduce((acc, block) => acc + block.data.length, 0),
+    [blocks]
+  )
+
+  // handleRefesh
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchBlockchainData();
+      toast({
+        title: "Refreshed",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+
+  const latestDifficulty = blocks[0]?.difficulty || 0
   const displayedBlocks = searchResults.length > 0 ? searchResults : blocks
-  const blockchainProgress = blockchainLength > 0 ? (blocks.length / blockchainLength) * 100 : 0
+  const blockchainProgress = blockchainLength > 0 ?
+    Math.min((blocks.length / blockchainLength) * 100, 100) : 0
 
   if (isLoading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <Skeleton className="h-10 w-64" />
+      <div className="container mx-auto px-4 py-8 space-y-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="space-y-2">
+            <Skeleton className="h-10 w-64" />
+            <Skeleton className="h-4 w-48" />
+          </div>
           <Skeleton className="h-10 w-full md:w-96" />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          {[...Array(3)].map((_, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {Array(3).fill(0).map((_, i) => (
             <Card key={i}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <Skeleton className="h-6 w-24" />
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <Skeleton className="h-5 w-24" />
                 <Skeleton className="h-6 w-6 rounded-full" />
               </CardHeader>
               <CardContent>
                 <Skeleton className="h-8 w-32 mt-2" />
-                <Skeleton className="h-4 w-full mt-4" />
+                <Skeleton className="h-3 w-full mt-4" />
               </CardContent>
             </Card>
           ))}
         </div>
 
-        <Skeleton className="h-10 w-48 mb-6" />
         <div className="space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <Skeleton key={i} className="h-20 w-full" />
+          <Skeleton className="h-8 w-48 mb-2" />
+          {Array(5).fill(0).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
           ))}
         </div>
       </div>
@@ -192,33 +250,48 @@ const ExplorerPage = () => {
 
   return (
     <TooltipProvider>
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+      <div className="container mx-auto px-4 py-8 space-y-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-purple-600 bg-clip-text text-transparent">
               Blockchain Explorer
             </h1>
             <p className="text-muted-foreground mt-1">
-              Explore transactions, blocks, and network activity
+              {searchResults.length > 0
+                ? `Showing ${searchResults.length} search results`
+                : `Exploring ${blockchainLength} blocks with ${totalTransactions} transactions`}
             </p>
           </div>
-          <div className="relative w-full md:w-auto">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder="Search by block, tx, address..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-full md:w-96 bg-background/50 backdrop-blur-sm"
-            />
+          <div className="flex gap-2">
+            <div className="relative w-full md:w-96">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search by height, hash, tx, address..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 w-full bg-background/50 backdrop-blur-sm"
+              />
+              {isSearching && (
+                <Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 animate-spin" />
+              )}
+            </div>
+            <Button
+              variant="outline"
+              // size="lg"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="gap-2 bg-background/50 backdrop-blur-sm hover:bg-background/70"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+              <span>Refresh</span>
+            </Button>
           </div>
         </div>
 
-
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card className="bg-gradient-to-br from-background to-muted/50 border-primary/20">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Total Blocks
               </CardTitle>
@@ -227,13 +300,13 @@ const ExplorerPage = () => {
             <CardContent>
               <div className="text-2xl font-bold">{blockchainLength}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                +{blocks.length > 0 ? formatDistanceToNow(new Date(blocks[0].timestamp / 1_000_000), { addSuffix: true }) : 'N/A'}
+                {blocks[0] ? `Last block ${formatDistanceToNow(new Date(blocks[0].timestamp / 1_000_000), { addSuffix: true })}` : 'N/A'}
               </p>
             </CardContent>
           </Card>
 
           <Card className="bg-gradient-to-br from-background to-muted/50 border-primary/20">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Total Transactions
               </CardTitle>
@@ -242,13 +315,13 @@ const ExplorerPage = () => {
             <CardContent>
               <div className="text-2xl font-bold">{totalTransactions}</div>
               <p className="text-xs text-muted-foreground mt-1">
-                ~{(totalTransactions / blockchainLength).toFixed(1)} tx/block
+                {`~${(totalTransactions / blockchainLength).toFixed(1)} tx/block`}
               </p>
             </CardContent>
           </Card>
 
           <Card className="bg-gradient-to-br from-background to-muted/50 border-primary/20">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Network Difficulty
               </CardTitle>
@@ -261,43 +334,43 @@ const ExplorerPage = () => {
           </Card>
         </div>
 
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">
-            {searchResults.length > 0 ? 'Search Results' : 'Latest Blocks'}
-          </h2>
-          {blocks.length > 0 && (
-            <Badge variant="outline" className="px-3 py-1 text-sm">
-              Synced {blocks.length} of {blockchainLength} blocks
-            </Badge>
-          )}
-        </div>
-
-        {isSearching ? (
-          <div className="flex flex-col items-center justify-center py-12 gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Searching blockchain...</p>
+        <section className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold">
+              {searchResults.length > 0 ? 'Search Results' : 'Latest Blocks'}
+            </h2>
+            {!searchQuery && blocks.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="px-3 py-1 text-sm">
+                  Showing {blocks.length - 1} of {blockchainLength} blocks
+                </Badge>
+                <Progress value={blockchainProgress} className="h-2 w-24" />
+              </div>
+            )}
           </div>
-        ) : displayedBlocks.length === 0 ? (
-          <Card className="bg-background/50 backdrop-blur-sm">
-            <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
-              <Database className="h-10 w-10 text-muted-foreground" />
-              <p className="text-muted-foreground">No blocks found</p>
-              {searchQuery && (
-                <Button variant="outline" onClick={() => setSearchQuery('')}>
-                  Clear search
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="space-y-4">
-            {displayedBlocks.map((block) => {
-              const totalFees = block.data
-                .filter((tx: Transaction) => tx.is_coinbase)
-                .reduce((acc, tx) => acc + (tx.input.fees || 0), 0)
-              const timestamp = new Date(block.timestamp / 1_000_000)
 
-              return (
+          {isSearching ? (
+            <div className="flex flex-col items-center justify-center py-12 gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Searching blockchain...</p>
+            </div>
+          ) : displayedBlocks.length === 0 ? (
+            <Card className="bg-background/50 backdrop-blur-sm">
+              <CardContent className="flex flex-col items-center justify-center py-12 gap-4">
+                <Database className="h-10 w-10 text-muted-foreground" />
+                <p className="text-muted-foreground">
+                  {searchQuery ? "No matching blocks found" : "No blocks found"}
+                </p>
+                {searchQuery && (
+                  <Button variant="outline" onClick={() => setSearchQuery('')}>
+                    Clear search
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {displayedBlocks.map((block) => (
                 <Card
                   key={block.hash}
                   className="transition-all hover:border-primary/50 hover:shadow-lg cursor-pointer bg-background/50 backdrop-blur-sm"
@@ -312,7 +385,7 @@ const ExplorerPage = () => {
                         <div>
                           <p className="font-medium">Block {block.height}</p>
                           <p className="text-sm text-muted-foreground">
-                            {formatDistanceToNow(timestamp, { addSuffix: true })}
+                            {formatDistanceToNow(new Date(block.timestamp / 1_000_000), { addSuffix: true })}
                           </p>
                         </div>
                       </div>
@@ -336,7 +409,6 @@ const ExplorerPage = () => {
                               <p>Block hash</p>
                             </TooltipContent>
                           </Tooltip>
-
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <div
@@ -346,7 +418,8 @@ const ExplorerPage = () => {
                                   copyToClipboard(block.last_hash)
                                 }}
                               >
-                                <span className="truncate">Prev: {block.last_hash}</span>
+                                <span>Prev: </span>
+                                <span className="truncate">{block.last_hash}</span>
                                 <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100" />
                               </div>
                             </TooltipTrigger>
@@ -379,16 +452,16 @@ const ExplorerPage = () => {
                     </div>
                   </CardContent>
                 </Card>
-              )
-            })}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
 
-        {blocks.length < blockchainLength && !searchResults.length && (
-          <div ref={observerRef} className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        )}
+          {hasMoreBlocks && !searchResults.length && (
+            <div ref={observerRef} className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            </div>
+          )}
+        </section>
       </div>
     </TooltipProvider>
   )

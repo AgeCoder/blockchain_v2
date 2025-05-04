@@ -129,7 +129,7 @@ export default function TransactionsCard({ transactions, isLoadingTx }: any) {
                                         <div className="text-center py-10">
                                             <p className="text-muted-foreground text-lg">No Transactions Yet</p>
                                             <p className="text-sm mt-2">
-                                                Send or receive coins to start your transaction history
+                                                Send or receive ANTIGs to start your transaction history
                                             </p>
                                         </div>
                                     )}
@@ -170,7 +170,7 @@ export default function TransactionsCard({ transactions, isLoadingTx }: any) {
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
-                                                        <p className="font-medium text-red-600 dark:text-red-400">-{tx.amount.toFixed(6)} COIN</p>
+                                                        <p className="font-medium text-red-600 dark:text-red-400">-{tx.amount.toFixed(6)} ANTIG</p>
                                                         <div className="flex items-center justify-end text-xs text-muted-foreground">
                                                             <Clock className="h-3 w-3 mr-1" />
                                                             {formatDistanceToNow(new Date(tx.timestamp), { addSuffix: true })}
@@ -192,7 +192,7 @@ export default function TransactionsCard({ transactions, isLoadingTx }: any) {
                                     ) : (
                                         <div className="text-center py-10">
                                             <p className="text-muted-foreground text-lg">No Sent Transactions Yet</p>
-                                            <p className="text-sm mt-2">Send coins to start your transaction history</p>
+                                            <p className="text-sm mt-2">Send ANTIGs to start your transaction history</p>
                                         </div>
                                     )}
                                 </TabsContent>
@@ -232,7 +232,7 @@ export default function TransactionsCard({ transactions, isLoadingTx }: any) {
                                                         </div>
                                                     </div>
                                                     <div className="text-right">
-                                                        <p className="font-medium text-green-600 dark:text-green-400">+{tx.amount.toFixed(6)} COIN</p>
+                                                        <p className="font-medium text-green-600 dark:text-green-400">+{tx.amount.toFixed(6)} ANTIG</p>
                                                         <div className="flex items-center justify-end text-xs text-muted-foreground">
                                                             <Clock className="h-3 w-3 mr-1" />
                                                             {formatDistanceToNow(new Date(tx.timestamp), { addSuffix: true })}
@@ -254,7 +254,7 @@ export default function TransactionsCard({ transactions, isLoadingTx }: any) {
                                     ) : (
                                         <div className="text-center py-10">
                                             <p className="text-muted-foreground text-lg">No Received Transactions Yet</p>
-                                            <p className="text-sm mt-2">Receive coins to start your transaction history</p>
+                                            <p className="text-sm mt-2">Receive ANTIGs to start your transaction history</p>
                                         </div>
                                     )}
                                 </TabsContent>

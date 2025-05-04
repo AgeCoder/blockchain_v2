@@ -23,9 +23,10 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { useWallet } from "@/lib/wallet-provider"
 import { api } from "@/lib/api-client"
 import { formatDistanceToNow } from "date-fns"
@@ -40,29 +41,54 @@ const DashboardPage = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [isLoadingTx, setIsLoadingTx] = useState(true)
-  const [sendForm, setSendForm] = useState({
+  const [sendForm, setSendForm] = useState<{
+    recipient: string
+    amount: string
+    priority: "low" | "medium" | "high"
+  }>({
     recipient: "",
     amount: "",
-    fee: "0.0001",
+    priority: "medium",
   })
   const [sendingTx, setSendingTx] = useState(false)
   const [formError, setFormError] = useState("")
   const [activeTab, setActiveTab] = useState<"all" | "sent" | "received">("all")
+  const [feeRateInfo, setFeeRateInfo] = useState({
+    fee_rate: 0.00001,
+    priority_multipliers: { low: 0.8, medium: 1.0, high: 1.5 },
+    mempool_size: 0,
+    block_fullness: 0.0
+  })
+
+  const fetchFeeRate = useCallback(async () => {
+    try {
+      const response = await api.wallet.getFeeRate()
+      setFeeRateInfo(response)
+    } catch (error) {
+      console.error("Error fetching fee rate:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch fee rate. Using default.",
+        variant: "destructive",
+      })
+    }
+  }, [toast])
 
   const calculateFee = useCallback((amount: number): number => {
-    const baseFee = 0.0001
-    const size = 250
-    const feeRate = Number.parseFloat(sendForm.fee) || 0.0001
-    return Math.max(baseFee, size * feeRate)
-  }, [sendForm.fee])
+    const size = 250 // BASE_TX_SIZE from backend
+    const multiplier = feeRateInfo.priority_multipliers[sendForm.priority] || 1.0
+    const fee = size * feeRateInfo.fee_rate * multiplier
+    return Math.max(fee, 0.001) // MIN_FEE from backend
+  }, [sendForm.priority, feeRateInfo])
 
   useEffect(() => {
     if (!isLoading && !wallet) {
       router.push("/wallet/import")
     } else if (wallet) {
+      fetchFeeRate()
       fetchTransactions()
     }
-  }, [wallet, isLoading, router])
+  }, [wallet, isLoading, router, fetchFeeRate])
 
   const fetchTransactions = async () => {
     if (!wallet?.address) return
@@ -106,6 +132,7 @@ const DashboardPage = () => {
     setIsRefreshing(true)
     try {
       await refreshWallet()
+      await fetchFeeRate()
       await fetchTransactions()
       toast({
         title: "Wallet Refreshed",
@@ -143,22 +170,12 @@ const DashboardPage = () => {
     }
 
     const amount = Number.parseFloat(sendForm.amount)
-    if (isNaN(amount)) {
-      setFormError("Amount must be a valid number")
+    if (isNaN(amount) || amount <= 0) {
+      setFormError("Amount must be a positive number")
       return
     }
 
-    if (amount <= 0) {
-      setFormError("Amount must be greater than 0")
-      return
-    }
-
-    const fee = Number.parseFloat(sendForm.fee)
-    if (isNaN(fee) || fee < 0.0001) {
-      setFormError("Fee must be at least 0.0001")
-      return
-    }
-
+    const fee = calculateFee(amount)
     if (wallet && amount + fee > wallet.balance) {
       setFormError(`Insufficient balance (including ${fee.toFixed(6)} fee)`)
       return
@@ -166,13 +183,13 @@ const DashboardPage = () => {
 
     setSendingTx(true)
     try {
-      await api.wallet.transact(sendForm.recipient, amount, { fee })
+      await api.wallet.transact(sendForm.recipient, amount, { priority: sendForm.priority })
       toast({
         title: "Transaction Sent",
-        description: `Sent ${amount.toFixed(6)} coins to ${sendForm.recipient}`,
+        description: `Sent ${amount.toFixed(6)} ANTIGs to ${sendForm.recipient}`,
       })
 
-      setSendForm({ recipient: "", amount: "", fee: "0.0001" })
+      setSendForm({ recipient: "", amount: "", priority: "medium" })
       await refreshWallet()
       await fetchTransactions()
     } catch (error: any) {
@@ -222,7 +239,7 @@ const DashboardPage = () => {
     )
   }
 
-  const estimatedFee = sendForm.amount ? calculateFee(Number.parseFloat(sendForm.amount)).toFixed(6) : "0.000100"
+  const estimatedFee = sendForm.amount ? calculateFee(Number.parseFloat(sendForm.amount)).toFixed(6) : "0.001000"
 
   return (
     <TooltipProvider>
@@ -293,7 +310,7 @@ const DashboardPage = () => {
                 <Label className="text-xs text-muted-foreground mb-1">Balance</Label>
                 <div className="flex items-center justify-between">
                   <div className="text-2xl font-bold">
-                    {wallet.balance.toFixed(6)} <span className="text-lg text-muted-foreground">COIN</span>
+                    {wallet.balance.toFixed(6)} <span className="text-lg text-muted-foreground">ANTIG</span>
                   </div>
                   <Button variant="ghost" size="sm" className="text-primary">
                     <History className="h-4 w-4 mr-2" />
@@ -302,7 +319,21 @@ const DashboardPage = () => {
                 </div>
               </div>
 
-
+              <div>
+                <Label className="text-xs text-muted-foreground mb-1">Network Fee Rate</Label>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <p className="text-sm font-mono">
+                      {feeRateInfo.fee_rate.toFixed(8)} ANTIG/byte
+                    </p>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Mempool Size: {feeRateInfo.mempool_size} txs</p>
+                    <p>Block Fullness: {(feeRateInfo.block_fullness * 100).toFixed(1)}%</p>
+                    <p>Priority Multipliers: Low (0.8x), Medium (1.0x), High (1.5x)</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
             </CardContent>
           </Card>
 
@@ -313,7 +344,7 @@ const DashboardPage = () => {
                 <Send className="h-5 w-5 text-primary" />
                 Send Transaction
               </CardTitle>
-              <CardDescription>Transfer coins to another address</CardDescription>
+              <CardDescription>Transfer ANTIGs to another address</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSendTransaction} className="space-y-4">
@@ -330,7 +361,7 @@ const DashboardPage = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="amount">Amount (COIN)</Label>
+                    <Label htmlFor="amount">Amount (ANTIG)</Label>
                     <Input
                       id="amount"
                       type="number"
@@ -343,31 +374,35 @@ const DashboardPage = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="fee">Fee Rate (COIN/byte)</Label>
-                    <Input
-                      id="fee"
-                      type="number"
-                      step="0.000001"
-                      min="0.0001"
-                      placeholder="0.000100"
-                      value={sendForm.fee}
-                      onChange={(e) => setSendForm({ ...sendForm, fee: e.target.value })}
-                      className="bg-background/50 backdrop-blur-sm"
-                    />
+                    <Label htmlFor="priority">Priority</Label>
+                    <Select
+                      value={sendForm.priority}
+                      onValueChange={(value) => setSendForm({ ...sendForm, priority: value as "low" | "medium" | "high" })}
+                    >
+                      <SelectTrigger className="bg-background/50 backdrop-blur-sm">
+                        <SelectValue placeholder="Select priority" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low (Slower, ~0.8x fee)</SelectItem>
+                        <SelectItem value="medium">Medium (Standard, ~1.0x fee)</SelectItem>
+                        <SelectItem value="high">High (Faster, ~1.5x fee)</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between text-sm">
                   <Tooltip>
                     <TooltipTrigger className="text-muted-foreground hover:underline cursor-help">
-                      Estimated Fee: {estimatedFee} COIN
+                      Estimated Fee: {estimatedFee} ANTIG
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Fee = max(0.0001, 250 bytes × fee rate)</p>
+                      <p>Fee = max(0.001, 250 bytes × {feeRateInfo.fee_rate.toFixed(8)} × {feeRateInfo.priority_multipliers[sendForm.priority]} ANTIG)</p>
+                      <p>{sendForm.priority.charAt(0).toUpperCase() + sendForm.priority.slice(1)} priority: {feeRateInfo.priority_multipliers[sendForm.priority]}x multiplier</p>
                     </TooltipContent>
                   </Tooltip>
                   <span className="text-muted-foreground">
-                    Available: {wallet.balance.toFixed(6)} COIN
+                    Available: {wallet.balance.toFixed(6)} ANTIG
                   </span>
                 </div>
 
@@ -405,7 +440,7 @@ const DashboardPage = () => {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => setSendForm({ recipient: "", amount: "", fee: "0.0001" })}
+                    onClick={() => setSendForm({ recipient: "", amount: "", priority: "medium" })}
                     disabled={sendingTx}
                   >
                     Reset
@@ -536,11 +571,11 @@ const DashboardPage = () => {
                               tx.type === "send" ? "text-orange-500" : "text-green-500"
                             )}>
                               {tx.type === "send" ? "-" : "+"}
-                              {tx.amount.toFixed(6)} COIN
+                              {tx.amount.toFixed(6)} ANTIG
                             </p>
                             {tx?.fee || 0 > 0 && (
                               <p className="text-xs text-muted-foreground mt-1">
-                                Fee: {tx?.fee.toFixed(6)} COIN
+                                Fee: {(tx?.fee || 0).toFixed(6)} ANTIG
                               </p>
                             )}
                           </div>

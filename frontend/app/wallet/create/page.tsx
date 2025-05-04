@@ -8,7 +8,7 @@ import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 import { useWallet } from "@/lib/wallet-provider"
 import { LoadingSpinner } from "@/components/ui/loading-spinner"
 
@@ -85,7 +85,7 @@ export default function CreateWalletPage() {
             <CardTitle className="flex items-center gap-2">
               <Wallet className="h-5 w-5" /> Create New Wallet
             </CardTitle>
-            <CardDescription>Generate a new blockchain wallet</CardDescription>
+            <CardDescription>Generate a new ANTIG</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex justify-center items-center py-2">

@@ -60,9 +60,9 @@ export function Navbar() {
         <div className="flex items-center gap-2">
           <Link href="/" className="flex items-center gap-2">
             <div className="relative h-8 w-8 overflow-hidden rounded-full bg-gradient-wallet">
-              <div className="absolute inset-0 flex items-center justify-center text-white font-bold">BC</div>
+              <div className="absolute inset-0 flex items-center justify-center text-white font-bold">AG</div>
             </div>
-            <span className="hidden font-bold sm:inline-block">Blockchain Wallet</span>
+            <span className="hidden font-bold sm:inline-block">ANTIG</span>
           </Link>
 
           {/* Desktop Navigation */}
@@ -94,7 +94,7 @@ export function Navbar() {
           {isAuthenticated && (
             <div className="hidden sm:flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm">
               <div className="h-2 w-2 rounded-full bg-green-500" />
-              <span className="font-medium">{wallet?.balance} COIN</span>
+              <span className="font-medium">{wallet?.balance} ANTIG</span>
             </div>
           )}
           {/* Connect Wallet Button */}
@@ -216,7 +216,7 @@ export function Navbar() {
             <div className="flex items-center justify-between p-2 rounded-md bg-muted mt-2">
               <div className="flex items-center gap-2">
                 <div className="h-2 w-2 rounded-full bg-green-500" />
-                <span className="font-medium">{wallet?.balance} COIN</span>
+                <span className="font-medium">{wallet?.balance} ANTIG</span>
               </div>
 
             </div>

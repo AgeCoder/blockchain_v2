@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@/lib/wallet-provider";
 import { api } from "@/lib/api-client";
 import { formatDistanceToNow } from "date-fns";
@@ -355,11 +355,11 @@ export default function TransactionsPage() {
                           <p className={`font-medium ${tx.type === "send" ? "text-orange-500" : "text-green-500"
                             }`}>
                             {tx.type === "send" ? "-" : "+"}
-                            {tx.amount.toFixed(6)} COIN
+                            {tx.amount.toFixed(6)} ANTIG
                           </p>
                           {tx.fee && (
                             <p className="text-xs text-muted-foreground mt-1">
-                              Fee: {tx.fee.toFixed(6)} COIN
+                              Fee: {tx.fee.toFixed(6)} ANTIG
                             </p>
                           )}
                         </div>

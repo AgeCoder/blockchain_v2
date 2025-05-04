@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { useWallet } from "@/lib/wallet-provider"
-import { useToast } from "@/components/ui/use-toast"
+import { useToast } from "@/hooks/use-toast"
 
 interface AuthContextType {
   user: { address: string } | null
