@@ -8,7 +8,7 @@ from models.blockchain import Blockchain
 from models.transaction_pool import TransactionPool
 from services.pubsub import PubSub
 from services.fee_rate_estimator import FeeRateEstimator
-from schemas.wallet import WalletInitRequest, WalletInfoResponse, TransactRequest, TransactResponse, FeeRateResponse
+from schemas.wallet import WalletInitRequest, WalletInfoResponse, TransactRequest, TransactResponse, FeeRateResponse,WalletInfoResponseinit_wallet
 from core.config import BASE_TX_SIZE, MIN_FEE, DEFAULT_FEE_RATE, BLOCK_SIZE_LIMIT, PRIORITY_MULTIPLIERS
 from dependencies import get_blockchain, get_transaction_pool, get_pubsub, app, get_fee_rate_estimator
 
@@ -39,7 +39,7 @@ async def get_wallet(authorization: str = Header(None)) -> Wallet:
         logger.error(f"Failed to initialize wallet: {str(e)}")
         raise HTTPException(status_code=400, detail="Invalid private key or no wallet initialized")
 
-@router.post("/wallet", response_model=WalletInfoResponse, status_code=200)
+@router.post("/wallet", response_model=WalletInfoResponseinit_wallet, status_code=200)
 @router.options("/wallet", include_in_schema=False)
 async def init_wallet(
     request: WalletInitRequest,
@@ -73,14 +73,17 @@ async def init_wallet(
         raise HTTPException(status_code=500, detail=f"Failed to initialize wallet: {str(e)}")
 
 @router.get("/wallet/info", response_model=WalletInfoResponse, status_code=200)
-async def route_wallet_info(wallet: Wallet = Depends(get_wallet)):
+async def route_wallet_info(
+    wallet: Wallet = Depends(get_wallet),
+    transaction_pool: TransactionPool = Depends(get_transaction_pool),
+    ):
     if not wallet:
         raise HTTPException(status_code=400, detail="Wallet not initialized")
     return {
         "address": wallet.address,
         "balance": wallet.balance,
         "publicKey": wallet.public_key,
-        "privateKey": wallet.get_private_key_hex(),
+        "pending_spends": Wallet.pending_spends(transaction_pool.transaction_map , wallet.address),
     }
 
 @router.post("/wallet/transact", response_model=TransactResponse, status_code=200)
@@ -116,6 +119,32 @@ async def route_wallet_transact(
         )
         available_balance = confirmed_balance - total_pending_spend
         
+        if available_balance < 0:
+            error_msg = (
+                f"Insufficient funds. Available: {available_balance:.4f} COIN, "
+                f"Pending transactions: {len(pending_txs)}"
+            )
+            raise HTTPException(status_code=400, detail=error_msg)
+
+        if request.amount > available_balance:
+            error_msg = (
+                f"Insufficient funds. Available: {available_balance:.4f} COIN, "
+                f"Requested: {request.amount:.4f} COIN (Pending transactions: {len(pending_txs)})"
+            )
+            raise HTTPException(status_code=400, detail=error_msg)
+        if request.amount + MIN_FEE > available_balance:
+            error_msg = (
+                f"Transaction too small. Minimum transaction size is {MIN_FEE:.4f} COIN "
+                f"for the requested amount of {request.amount:.4f} COIN."
+            )
+            raise HTTPException(status_code=400, detail=error_msg)
+        if request.amount + MIN_FEE > confirmed_balance:
+            error_msg = (
+                f"Transaction too small. Minimum transaction size is {MIN_FEE:.4f} COIN "
+                f"for the requested amount of {request.amount:.4f} COIN."
+            )
+            raise HTTPException(status_code=400, detail=error_msg)
+
         # Create transaction to estimate size and fee
         try:
             existing_tx = transaction_pool.existing_transaction(wallet.address)

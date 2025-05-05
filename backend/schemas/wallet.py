@@ -8,7 +8,14 @@ class WalletInfoResponse(BaseModel):
     address: str
     balance: NonNegativeFloat
     publicKey: str
+    pending_spends: float
+    
+class WalletInfoResponseinit_wallet(BaseModel):
+    address: str
+    balance: NonNegativeFloat
+    publicKey: str
     privateKey: str
+    # pending_spends: float
 
 class TransactRequest(BaseModel):
     recipient: str

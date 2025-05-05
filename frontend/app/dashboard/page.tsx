@@ -312,10 +312,11 @@ const DashboardPage = () => {
                   <div className="text-2xl font-bold">
                     {wallet.balance.toFixed(6)} <span className="text-lg text-muted-foreground">ANTIG</span>
                   </div>
-                  <Button variant="ghost" size="sm" className="text-primary">
-                    <History className="h-4 w-4 mr-2" />
-                    History
-                  </Button>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-muted-foreground">
+                    Pending Spends: {wallet?.pending_spends || 0} ANTIG
+                  </div>
                 </div>
               </div>
 

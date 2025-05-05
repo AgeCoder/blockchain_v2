@@ -711,8 +711,23 @@ class PubSub:
                 received_blocks_data = data
                 if received_blocks_data:
                     try:
-                        received_blocks = [Block.from_json(block_data) for block_data in received_blocks_data]
-                        potential_chain = self.blockchain.chain + received_blocks
+                        received_blocks = []
+                        for block_data in received_blocks_data:
+                            try:
+                                block = Block.from_json(block_data)
+                                for tx_json in block.data:
+                                    tx = Transaction.from_json(tx_json)
+                                    Transaction.is_valid(tx)
+                                received_blocks.append(block)
+                            except Exception as e:
+                                logger.warning(f"Skipping invalid block: {e}")
+                                continue
+                        potential_chain = self.blockchain.chain[:]
+                        if received_blocks and received_blocks[0].height <= self.blockchain.current_height:
+                            logger.warning(f"Ignoring blocks with invalid height {received_blocks[0].height}")
+                            self.syncing_chain = False
+                            return
+                        potential_chain += received_blocks
                         logger.debug(f"Received {len(received_blocks)} blocks, attempting to replace chain")
                         self.blockchain.utxo_set.clear()
                         self.blockchain.replace_chain(potential_chain)

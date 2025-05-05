@@ -11,6 +11,7 @@ export interface Wallet {
   address: string
   publicKey: string
   balance: number
+  pending_spends: number
 }
 
 interface WalletContextType {
@@ -71,6 +72,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const fetchWalletInfo = async () => {
     try {
       const walletData = await api.wallet.getInfo()
+      console.log(walletData, 'hi');
+
       setWallet(walletData)
       return walletData
     } catch (err: any) {

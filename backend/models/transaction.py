@@ -9,7 +9,7 @@ from core.config import (
 from models.wallet import Wallet
 
 class Transaction:
-    # Initializes a transaction, either coinbase or regular, with dynamic fee calculation and validation
+    # Initializes a transaction with a single recipient, either coinbase or regular
     def __init__(self, sender_wallet=None, recipient=None, amount=None, id=None, 
                  output=None, input=None, fee=0, size=0, is_coinbase=False, fee_rate=DEFAULT_FEE_RATE):
         self.id = id or (f"coinbase_{str(uuid4())}" if is_coinbase else str(uuid4()))
@@ -17,8 +17,10 @@ class Transaction:
         self.fee = fee
         self.fee_rate = max(fee_rate, MIN_FEE / BASE_TX_SIZE)
         self.size = size or BASE_TX_SIZE
-        self.recipient = recipient
-        self.amount = amount
+        self.recipient = recipient  # Single recipient address
+        self.amount = amount  # Single amount
+        self.recipients = [recipient] if recipient else []  # List to track recipients after updates
+        self.amounts = {recipient: amount} if recipient and amount else {}  # Dict to track amounts
         self.logger = logging.getLogger(__name__)
         logging.basicConfig(level=logging.INFO)
 
@@ -48,8 +50,8 @@ class Transaction:
             self.logger.error(f"Error initializing transaction: {str(e)}")
             raise
 
-    # Creates the transaction output dictionary with recipient and sender's change
-    def _create_output(self, sender_wallet, recipient, amount) -> Dict[str, float]:
+    # Creates the transaction output dictionary with single recipient initially
+    def _create_output(self, sender_wallet, recipient: str, amount: float) -> Dict[str, float]:
         try:
             if not recipient or amount <= 0:
                 raise ValueError("Invalid transaction parameters")
@@ -107,33 +109,36 @@ class Transaction:
             self.logger.error(f"Error creating input: {str(e)}")
             raise
 
-    # Updates an existing transaction by adding to the recipient's amount, recalculating fee and resigning
-    def update(self, sender_wallet, recipient, amount, fee_rate=DEFAULT_FEE_RATE):
+    # Updates a pending transaction by adding a new recipient and adding to the fee rate
+    def update(self, sender_wallet, recipient: str, amount: float, fee_rate=DEFAULT_FEE_RATE):
         try:
-            if not sender_wallet or not recipient or amount <= 0:
+            if not sender_wallet or not recipient or amount <= 0 or fee_rate < 0:
                 raise ValueError("Invalid transaction parameters")
-            if recipient != self.recipient:
-                raise ValueError("Cannot update transaction with a different recipient")
             
-            # Accumulate the amount for the same recipient
-            current_amount = self.output.get(recipient, 0)
-            new_amount = current_amount + amount
-            self.amount = new_amount
-            self.output[recipient] = new_amount
-            self.size = self._calculate_size()
-            new_fee = max(self.size * self.fee_rate, MIN_FEE)
-            total_required = new_amount + new_fee
+            # Add new recipient and amount
+            if recipient in self.amounts:
+                self.amounts[recipient] += amount
+            else:
+                self.amounts[recipient] = amount
+                self.recipients.append(recipient)
+            
+            self.output[recipient] = self.amounts[recipient]
+            
+            # Add the provided fee_rate to the existing fee_rate
+            print(f"Adding fee rate: {fee_rate} to existing fee rate: {self.fee_rate}")
+            self.fee_rate += fee_rate
+            
+            total_required = sum(self.amounts.values()) + self.fee
             
             available_balance = sender_wallet.calculate_balance(sender_wallet.blockchain, sender_wallet.address)
             if total_required > available_balance:
                 raise ValueError(f"Insufficient funds: required {total_required}, available {available_balance}")
             
-            # Adjust sender's balance for the additional amount and fee change
-            self.output[sender_wallet.address] = available_balance - new_amount - new_fee
+            # Adjust sender's balance for the updated amounts
+            self.output[sender_wallet.address] = available_balance - total_required
             if self.output[sender_wallet.address] < 0:
                 raise ValueError(f"Negative balance after update: {self.output[sender_wallet.address]}")
             
-            self.fee = new_fee
             self.input['signature'] = sender_wallet.sign(self.output)
             self.input['timestamp'] = time.time_ns()
         except Exception as e:
@@ -143,9 +148,11 @@ class Transaction:
     # Calculates the transaction size in bytes, ensuring minimum size
     def _calculate_size(self) -> int:
         try:
-            input_size = sum(len(str(tx_id)) for tx_id in self.input.get('prev_tx_ids', [])) if self.input else 0
-            input_size += len(str(self.input)) if self.input else 0
-            output_size = len(str(self.output))
+            input_size = 0
+            if hasattr(self, 'input') and self.input:
+                input_size = sum(len(str(tx_id)) for tx_id in self.input.get('prev_tx_ids', []))
+                input_size += len(str(self.input))
+            output_size = len(str(self.output)) + sum(len(addr) for addr in self.recipients)
             return max(BASE_TX_SIZE, input_size + output_size)
         except Exception as e:
             self.logger.error(f"Error calculating size: {str(e)}")
@@ -164,6 +171,7 @@ class Transaction:
                 if len(outputs) != 1 or outputs[0][1] <= 0:
                     raise ValueError("Invalid coinbase transaction output")
                 if outputs[0][1] > subsidy + total_fees:
+                    print(f"Coinbase validation failed: output {outputs[0][1]}, subsidy {subsidy}, fees {total_fees}, block_height {block_height}")
                     raise ValueError(f"Coinbase output {outputs[0][1]} exceeds subsidy {subsidy} + fees {total_fees}")
                 return True
             
@@ -209,6 +217,9 @@ class Transaction:
         try:
             subsidy = BLOCK_SUBSIDY // (2 ** (block_height // HALVING_INTERVAL))
             total_reward = subsidy + total_fees
+            if total_reward > subsidy + total_fees:
+                print(f"Invalid coinbase reward: {total_reward} exceeds subsidy {subsidy} + fees {total_fees}")
+                raise ValueError(f"Invalid coinbase reward: {total_reward} exceeds subsidy {subsidy} + fees {total_fees}")
             
             if total_reward <= 0:
                 raise ValueError("Total reward must be positive")
@@ -249,6 +260,8 @@ class Transaction:
                 'is_coinbase': self.is_coinbase,
                 'recipient': self.recipient,
                 'amount': self.amount,
+                'recipients': self.recipients,
+                'amounts': self.amounts,
                 'fee_rate': self.fee_rate
             }
         except Exception as e:

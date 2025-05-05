@@ -22,7 +22,7 @@ GENESIS_DATA = {
             },
             "is_coinbase": True,
             "output": {
-                "AGd28c7d0058a7d7de1cc8a4890f8a84fac": 5000
+                "AG1qazxsw23edcvedantcde3": 50
             },
             "fee": 0,
             "size": 250

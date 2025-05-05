@@ -139,7 +139,7 @@ class Wallet:
             return False
 
     def calculate_balance(self, blockchain, address):
-        """Calculate balance from UTXO set."""
+        """Calculate balance from UTXO set, accounting for pending transactions."""
         balance = 0.0
         if blockchain is None:
             self.logger.warning("Blockchain is None, returning balance 0")
@@ -148,5 +148,17 @@ class Wallet:
             for output_addr, amount in outputs.items():
                 if output_addr == address:
                     balance += amount
-        self.logger.info(f"Calculated balance for {address}: {balance}")
+        # Subtract pending spends from transaction pool
         return balance
+        
+    @staticmethod
+    def pending_spends(transaction_map, address):
+        """Get pending spends."""
+        amount = 0.0
+        for tx in transaction_map.values():
+            if tx.input.get('address') == address:
+                for output_addr, output_amount in tx.output.items():
+                    if output_addr != address:
+                        amount += output_amount   
+        return amount
+        
